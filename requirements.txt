@@ -1,0 +1,6 @@
+confluent-kafka
+pymongo
+pandas
+python-dotenv
+asyncio
+json-logging
