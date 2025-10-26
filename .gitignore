@@ -2,9 +2,12 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+*.pyc
 # C extensions
 *.so
+
+# macOS system files
+.DS_Store
 
 # Distribution / packaging
 .Python
@@ -143,6 +146,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+isolated_venv/
 
 # Spyder project settings
 .spyderproject

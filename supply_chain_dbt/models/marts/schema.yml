@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: shipment_performance_metrics
+    description: "Aggregated shipment metrics from shipment_metrics intermediate view"
+    columns:
+      - name: total_shipments
+        description: "Total number of shipments"
+      - name: avg_eta_variation_hours
+        description: "Average ETA variation in hours"
+      - name: avg_lead_time_days
+        description: "Average lead time in days"
+      - name: avg_delay_probability
+        description: "Average probability of delay"
+      - name: high_risk_count
+        description: "Number of shipments classified as high risk"
+      - name: medium_risk_count
+        description: "Number of shipments classified as medium risk"
+      - name: low_risk_count
+        description: "Number of shipments classified as low risk"
