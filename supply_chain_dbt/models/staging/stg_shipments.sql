@@ -3,7 +3,7 @@
 with source as (
 
     select *
-    from `savvy-equator-476206-r2.supply_chain.shipments_raw`
+    from {{ source('mongo_raw', 'shipments_raw') }}
 
 )
 

@@ -4,3 +4,13 @@ pandas
 python-dotenv
 asyncio
 json-logging
+fastapi
+uvicorn
+pydantic
+httpx
+streamlit
+plotly
+matplotlib
+seaborn
+google-cloud-bigquery
+euriai

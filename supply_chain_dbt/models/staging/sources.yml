@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: mongo_raw
+    database: supply-chain-project-476405   # <-- your real GCP project id
+    schema: supply_chain                    # BigQuery dataset
+    tables:
+      - name: shipments_raw                 # table loaded by your Python job
+

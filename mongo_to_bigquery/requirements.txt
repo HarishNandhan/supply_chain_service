@@ -1,5 +1,9 @@
 pandas
 google-cloud-bigquery
 python-dotenv
+fastapi
+uvicorn
+pydantic
+pymongo
 
 

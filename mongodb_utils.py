@@ -3,6 +3,10 @@ from pymongo import MongoClient
 from dotenv import load_dotenv
 import logging
 from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+import uvicorn
 
 # Load environment variables
 load_dotenv()
@@ -10,6 +14,15 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# FastAPI app
+app = FastAPI(title="MongoDB Management API", version="1.0.0")
+
+class CollectionStats(BaseModel):
+    document_count: int
+    storage_size: int
+    avg_document_size: int
+    total_indexes: int
 
 class MongoDBManager:
     def __init__(self):
@@ -162,5 +175,97 @@ def test_mongodb_connection():
     except Exception as e:
         logger.error(f"MongoDB test failed: {str(e)}")
 
+# Global MongoDB manager instance
+mongo_manager = None
+
+def get_mongo_manager():
+    global mongo_manager
+    if mongo_manager is None:
+        mongo_manager = MongoDBManager()
+    return mongo_manager
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("MongoDB Management API starting up...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global mongo_manager
+    if mongo_manager:
+        mongo_manager.close()
+    logger.info("MongoDB Management API shutting down...")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "mongodb-management"}
+
+@app.post("/indexes/create")
+async def create_indexes():
+    try:
+        manager = get_mongo_manager()
+        manager.create_indexes()
+        return {"status": "success", "message": "Indexes created successfully"}
+    except Exception as e:
+        logger.error(f"Failed to create indexes: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stats", response_model=CollectionStats)
+async def get_collection_stats():
+    try:
+        manager = get_mongo_manager()
+        stats = manager.get_collection_stats()
+        if stats is None:
+            raise HTTPException(status_code=500, detail="Failed to get collection stats")
+        return CollectionStats(**stats)
+    except Exception as e:
+        logger.error(f"Failed to get collection stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/events/recent")
+async def get_recent_events(limit: int = 10):
+    try:
+        manager = get_mongo_manager()
+        events = manager.query_recent_events(limit)
+        # Convert ObjectId to string for JSON serialization
+        for event in events:
+            event['_id'] = str(event['_id'])
+        return {"events": events, "count": len(events)}
+    except Exception as e:
+        logger.error(f"Failed to get recent events: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/events/high-risk")
+async def get_high_risk_events(risk_threshold: float = 1.0, limit: int = 20):
+    try:
+        manager = get_mongo_manager()
+        events = manager.query_high_risk_events(risk_threshold, limit)
+        # Convert ObjectId to string for JSON serialization
+        for event in events:
+            event['_id'] = str(event['_id'])
+        return {"events": events, "count": len(events), "risk_threshold": risk_threshold}
+    except Exception as e:
+        logger.error(f"Failed to get high-risk events: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/analytics/daily-stats")
+async def get_daily_stats():
+    try:
+        manager = get_mongo_manager()
+        stats = manager.aggregate_daily_stats()
+        return {"daily_stats": stats, "count": len(stats)}
+    except Exception as e:
+        logger.error(f"Failed to get daily stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test-connection")
+async def test_connection():
+    try:
+        manager = get_mongo_manager()
+        manager.client.admin.command('ping')
+        return {"status": "success", "message": "MongoDB connection successful"}
+    except Exception as e:
+        logger.error(f"MongoDB connection test failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
-    test_mongodb_connection()
+    uvicorn.run(app, host="0.0.0.0", port=8003)

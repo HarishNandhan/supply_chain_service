@@ -6,6 +6,10 @@ from datetime import datetime
 from confluent_kafka import Producer
 from dotenv import load_dotenv
 import logging
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from typing import Optional
+import uvicorn
 
 # Load environment variables
 load_dotenv()
@@ -13,6 +17,14 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# FastAPI app
+app = FastAPI(title="Supply Chain Producer API", version="1.0.0")
+
+class StreamingRequest(BaseModel):
+    csv_file_path: Optional[str] = 'data/cleaned_supply_chain_data.csv'
+    batch_size: Optional[int] = 100
+    streaming_interval: Optional[int] = 1
 
 class SupplyChainProducer:
     def __init__(self):
@@ -118,9 +130,59 @@ class SupplyChainProducer:
         self.producer.flush()
         logger.info("Producer closed")
 
-if __name__ == "__main__":
-    producer = SupplyChainProducer()
+# Global producer instance
+producer_instance = None
+
+def get_producer():
+    global producer_instance
+    if producer_instance is None:
+        producer_instance = SupplyChainProducer()
+    return producer_instance
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Producer API starting up...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global producer_instance
+    if producer_instance:
+        producer_instance.close()
+    logger.info("Producer API shutting down...")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "supply-chain-producer"}
+
+@app.post("/stream/start")
+async def start_streaming(request: StreamingRequest, background_tasks: BackgroundTasks):
     try:
-        producer.stream_data()
-    finally:
-        producer.close()
+        producer = get_producer()
+        background_tasks.add_task(
+            producer.stream_data, 
+            request.csv_file_path
+        )
+        return {
+            "status": "started", 
+            "message": "Streaming started in background",
+            "config": {
+                "csv_file": request.csv_file_path,
+                "batch_size": producer.batch_size,
+                "interval": producer.streaming_interval
+            }
+        }
+    except Exception as e:
+        logger.error(f"Failed to start streaming: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stream/status")
+async def get_streaming_status():
+    producer = get_producer()
+    return {
+        "topic": producer.topic,
+        "batch_size": producer.batch_size,
+        "streaming_interval": producer.streaming_interval
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8001)

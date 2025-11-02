@@ -5,6 +5,12 @@ from confluent_kafka import Consumer, KafkaError
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import logging
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+import uvicorn
+import asyncio
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -12,6 +18,14 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# FastAPI app
+app = FastAPI(title="Supply Chain Consumer API", version="1.0.0")
+
+class ConsumerStatus(BaseModel):
+    is_running: bool
+    messages_processed: int
+    last_message_time: Optional[str]
 
 class SupplyChainConsumer:
     def __init__(self):
@@ -44,6 +58,11 @@ class SupplyChainConsumer:
         
         # Subscribe to topic
         self.consumer.subscribe([self.topic])
+        
+        # Status tracking
+        self.is_running = False
+        self.messages_processed = 0
+        self.last_message_time = None
         
         logger.info(f"Consumer initialized and subscribed to topic: {self.topic}")
         logger.info(f"MongoDB connected to database: {self.db_name}, collection: {self.collection_name}")
@@ -88,9 +107,10 @@ class SupplyChainConsumer:
     def consume_messages(self):
         """Main consumer loop"""
         logger.info("Starting message consumption...")
+        self.is_running = True
         
         try:
-            while True:
+            while self.is_running:
                 # Poll for messages
                 msg = self.consumer.poll(timeout=1.0)
                 
@@ -113,6 +133,8 @@ class SupplyChainConsumer:
                 if processed_data:
                     success = self.store_to_mongodb(processed_data)
                     if success:
+                        self.messages_processed += 1
+                        self.last_message_time = datetime.utcnow().isoformat()
                         logger.info(f"Successfully processed and stored event: {processed_data['event_id']}")
                     else:
                         logger.error(f"Failed to store event: {processed_data['event_id']}")
@@ -124,7 +146,12 @@ class SupplyChainConsumer:
         except Exception as e:
             logger.error(f"Consumer error: {str(e)}")
         finally:
+            self.is_running = False
             self.close()
+    
+    def stop_consuming(self):
+        """Stop the consumer loop"""
+        self.is_running = False
     
     def close(self):
         """Close consumer and MongoDB connections"""
@@ -132,6 +159,97 @@ class SupplyChainConsumer:
         self.mongo_client.close()
         logger.info("Consumer and MongoDB connections closed")
 
+# Global consumer instance
+consumer_instance = None
+consumer_thread = None
+
+def get_consumer():
+    global consumer_instance
+    if consumer_instance is None:
+        consumer_instance = SupplyChainConsumer()
+    return consumer_instance
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Consumer API starting up...")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global consumer_instance, consumer_thread
+    if consumer_instance:
+        consumer_instance.stop_consuming()
+    if consumer_thread and consumer_thread.is_alive():
+        consumer_thread.join(timeout=5)
+    logger.info("Consumer API shutting down...")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "supply-chain-consumer"}
+
+@app.post("/consumer/start")
+async def start_consumer():
+    global consumer_thread
+    try:
+        consumer = get_consumer()
+        
+        if consumer.is_running:
+            return {"status": "already_running", "message": "Consumer is already running"}
+        
+        consumer_thread = threading.Thread(target=consumer.consume_messages, daemon=True)
+        consumer_thread.start()
+        
+        return {"status": "started", "message": "Consumer started successfully"}
+    except Exception as e:
+        logger.error(f"Failed to start consumer: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/consumer/stop")
+async def stop_consumer():
+    try:
+        consumer = get_consumer()
+        consumer.stop_consuming()
+        return {"status": "stopped", "message": "Consumer stopped successfully"}
+    except Exception as e:
+        logger.error(f"Failed to stop consumer: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/consumer/status")
+async def get_consumer_status():
+    consumer = get_consumer()
+    return ConsumerStatus(
+        is_running=consumer.is_running,
+        messages_processed=consumer.messages_processed,
+        last_message_time=consumer.last_message_time
+    )
+
+@app.get("/events/recent")
+async def get_recent_events(limit: int = 10):
+    try:
+        consumer = get_consumer()
+        cursor = consumer.collection.find().sort('ingestion_timestamp', -1).limit(limit)
+        events = []
+        for doc in cursor:
+            doc['_id'] = str(doc['_id'])  # Convert ObjectId to string
+            events.append(doc)
+        return {"events": events, "count": len(events)}
+    except Exception as e:
+        logger.error(f"Failed to get recent events: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/events/high-risk")
+async def get_high_risk_events(risk_threshold: float = 1.0, limit: int = 20):
+    try:
+        consumer = get_consumer()
+        query = {'performance_indicators.risk_classification': {'$gte': risk_threshold}}
+        cursor = consumer.collection.find(query).sort('timestamp', -1).limit(limit)
+        events = []
+        for doc in cursor:
+            doc['_id'] = str(doc['_id'])
+            events.append(doc)
+        return {"events": events, "count": len(events), "risk_threshold": risk_threshold}
+    except Exception as e:
+        logger.error(f"Failed to get high-risk events: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
-    consumer = SupplyChainConsumer()
-    consumer.consume_messages()
+    uvicorn.run(app, host="0.0.0.0", port=8002)
