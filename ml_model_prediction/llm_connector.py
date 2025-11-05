@@ -96,8 +96,8 @@ class LLMConnector:
         
         return None
     
-    def generate_response(self, shipment_id, prediction_data):
-        """Generate natural language response about shipment status"""
+    def generate_response(self, shipment_id, prediction_data, shipment_features=None):
+        """Generate natural language response about shipment status with feature analysis"""
         import logging
         logger = logging.getLogger(__name__)
         
@@ -106,93 +106,97 @@ class LLMConnector:
         
         # Determine status based on delay - ML model predicts in hours
         if delay_hours > 0.5:  # More than 30 minutes late
-            status = f"delayed by {delay_hours:.2f} hours"
+            status = "delayed"
+            status_detail = f"delayed by {delay_hours:.2f} hours"
             emoji = "🔴"
         elif delay_hours < -0.5:  # More than 30 minutes early
-            status = f"arriving {abs(delay_hours):.2f} hours early"
+            status = "early"
+            status_detail = f"arriving {abs(delay_hours):.2f} hours early"
             emoji = "🟢"
         else:  # Within 30 minutes of scheduled time
-            status = f"on time (predicted delay: {delay_hours:.3f} hours)"
+            status = "on time"
+            status_detail = f"on time (predicted variation: {delay_hours:.3f} hours)"
             emoji = "🟡"
         
         logger.info(f"Determined status: {status}")
         
-        # Create detailed response with debug info
-        debug_info = f"""
-        **🔍 ML Prediction Details:**
-        - Shipment ID: {shipment_id}
-        - Raw ML prediction: {delay_hours:.6f} hours
-        - Status determination: {status}
-        - Threshold logic: >0.5h = delayed, <-0.5h = early, else on time
-        - Model output type: {type(delay_hours)}
-        """
-        
-        # Create a good fallback response first
-        if delay_hours > 0.5:
-            fallback_response = f"""
-            {emoji} **Shipment Alert: {shipment_id}**
-            
-            Your shipment is currently **delayed by {delay_hours:.2f} hours**.
-            
-            Our AI model predicts this delay based on current traffic conditions, weather, and operational factors. We'll continue monitoring and update you if anything changes.
-            """
-        elif delay_hours < -0.5:
-            fallback_response = f"""
-            {emoji} **Great News: {shipment_id}**
-            
-            Your shipment is **arriving {abs(delay_hours):.2f} hours early**!
-            
-            Better than expected conditions have allowed for faster delivery. Your package should arrive ahead of schedule.
-            """
-        else:
-            fallback_response = f"""
-            {emoji} **Shipment Status: {shipment_id}**
-            
-            Your shipment is **on time** (ML predicts {delay_hours:.3f} hours variation).
-            
-            The AI model shows minimal deviation from scheduled delivery time.
-            """
+        # Analyze contributing features only if shipment is delayed
+        contributing_factors = []
+        factors_text = ""
+        if status == "delayed" and shipment_features:
+            contributing_factors = analyze_feature_importance(shipment_features)
+            if contributing_factors:
+                factors_list = [f"- {factor[2]} (value: {factor[1]:.3f})" for factor in contributing_factors]
+                factors_text = f"""
+                
+                Top contributing factors for this delay:
+                {chr(10).join(factors_list)}
+                """
         
         # Try LLM if available
         if self.client:
             prompt = f"""
-            Generate a friendly and informative response about a shipment status.
+            You are an AI assistant for a supply chain tracking system. Generate a professional and informative response about a shipment's delivery status.
             
-            Shipment ID: {shipment_id}
-            Predicted delay: {delay_hours:.2f} hours
-            Status: {status}
+            Shipment Details:
+            - Shipment ID: {shipment_id}
+            - ML Model Prediction: {delay_hours:.3f} hours
+            - Status: {status} ({status_detail})
             
-            Create a natural response that includes:
-            1. The shipment ID
-            2. The current status (delayed/on time/early)
-            3. A brief explanation
+            {factors_text}
             
-            Keep it concise and customer-friendly.
+            Instructions:
+            1. Start with a clear status statement about whether the shipment is delayed, on time, or early
+            2. Provide the specific time prediction
+            3. If the shipment is DELAYED and there are contributing factors, explain the top 3 factors that caused this delay in simple business terms
+            4. If the shipment is ON TIME or EARLY, do NOT mention contributing factors - just provide a positive message
+            5. Keep the tone professional but friendly
+            6. End with a brief reassurance or next steps
+            
+            Format the response to be customer-friendly and informative.
             """
             
             try:
                 response = self.client.generate_completion(
                     prompt=prompt,
                     temperature=0.3,
-                    max_tokens=150
+                    max_tokens=250
                 )
                 
-                # Add debug info to response
-                full_response = f"{response.strip()}\n\n{debug_info}"
                 logger.info(f"Generated LLM response successfully")
-                return full_response
+                return response.strip()
                 
             except Exception as e:
                 logger.error(f"LLM generation failed: {str(e)}")
         
-        # Use fallback response with debug info
-        fallback = f"{fallback_response}\n\n{debug_info}"
-        if not self.client:
-            fallback += "\n\n**Note:** Using built-in response (LLM not available)."
-        else:
-            fallback += "\n\n**Note:** LLM response generation failed, using fallback."
+        # Fallback response if LLM is not available
+        fallback_response = f"""
+        {emoji} **Shipment Update: {shipment_id}**
         
-        return fallback
+        Your shipment is **{status_detail}**.
+        """
+        
+        # Only show contributing factors for delayed shipments
+        if status == "delayed" and contributing_factors:
+            fallback_response += f"""
+            
+        **Key factors causing this delay:**
+        """
+            for i, (_, value, description) in enumerate(contributing_factors, 1):
+                fallback_response += f"\n{i}. {description}"
+        
+        if status == "delayed":
+            fallback_response += f"""
+            
+        Our AI model analyzed multiple operational factors to identify the cause of this delay. We'll continue monitoring your shipment and update you of any changes.
+        """
+        else:
+            fallback_response += f"""
+            
+        Our AI model shows your shipment is progressing smoothly. We'll continue monitoring and keep you updated.
+        """
+        
+        return fallback_response
 
 def get_shipment_data(shipment_id):
     """Get shipment data from BigQuery shipment_metrics table"""
@@ -217,6 +221,63 @@ def get_shipment_data(shipment_id):
     except Exception as e:
         print(f"Error fetching shipment data: {str(e)}")
         return None
+
+def analyze_feature_importance(shipment_data):
+    """Analyze which features are most likely contributing to the prediction"""
+    # Define feature categories and their business meanings
+    feature_meanings = {
+        'traffic_congestion_level': 'Traffic Congestion Level',
+        'weather_condition_severity': 'Weather Conditions',
+        'port_congestion_level': 'Port Congestion',
+        'loading_unloading_time': 'Loading/Unloading Time',
+        'handling_equipment_availability': 'Equipment Availability',
+        'lead_time_days': 'Lead Time',
+        'disruption_likelihood_score': 'Disruption Risk Score',
+        'is_rush_hour': 'Rush Hour Traffic',
+        'is_weekend': 'Weekend Operations',
+        'shipping_costs': 'Shipping Costs',
+        'order_fulfillment_status': 'Order Fulfillment Status'
+    }
+    
+    # Analyze feature values and identify potential contributors
+    contributing_factors = []
+    
+    # High traffic congestion
+    if shipment_data.get('traffic_congestion_level', 0) > 0.7:
+        contributing_factors.append(('traffic_congestion_level', shipment_data['traffic_congestion_level'], 'High traffic congestion'))
+    
+    # Severe weather
+    if abs(shipment_data.get('weather_condition_severity', 0)) > 0.5:
+        contributing_factors.append(('weather_condition_severity', shipment_data['weather_condition_severity'], 'Severe weather conditions'))
+    
+    # Port congestion
+    if shipment_data.get('port_congestion_level', 0) > 0.6:
+        contributing_factors.append(('port_congestion_level', shipment_data['port_congestion_level'], 'High port congestion'))
+    
+    # Long loading time
+    if shipment_data.get('loading_unloading_time', 0) > 2.0:
+        contributing_factors.append(('loading_unloading_time', shipment_data['loading_unloading_time'], 'Extended loading/unloading time'))
+    
+    # Poor equipment availability
+    if shipment_data.get('handling_equipment_availability', 1) < 0.4:
+        contributing_factors.append(('handling_equipment_availability', shipment_data['handling_equipment_availability'], 'Limited equipment availability'))
+    
+    # High disruption risk
+    if shipment_data.get('disruption_likelihood_score', 0) > 0.5:
+        contributing_factors.append(('disruption_likelihood_score', shipment_data['disruption_likelihood_score'], 'High disruption risk'))
+    
+    # Rush hour impact
+    if shipment_data.get('is_rush_hour', 0) == 1:
+        contributing_factors.append(('is_rush_hour', 1, 'Rush hour traffic impact'))
+    
+    # Long lead time
+    if shipment_data.get('lead_time_days', 0) > 3:
+        contributing_factors.append(('lead_time_days', shipment_data['lead_time_days'], 'Extended lead time'))
+    
+    # Sort by impact (higher values generally mean more impact)
+    contributing_factors.sort(key=lambda x: abs(x[1]) if isinstance(x[1], (int, float)) else 0, reverse=True)
+    
+    return contributing_factors[:3]  # Return top 3 factors
 
 def predict_shipment_delay(shipment_id):
     """Main function to predict shipment delay and generate response"""
@@ -243,23 +304,28 @@ def predict_shipment_delay(shipment_id):
     
     logger.info(f"Using ML model: {project_id}.{dataset}.{model_name}")
     
-    # Feature columns for the ML model (same as in test_predict.py)
+    # All columns except the excluded ones (matches your CREATE MODEL query)
+    # Your model uses: * EXCEPT(`timestamp`, _id, event_id, label_delay_hours_raw)
     feature_select = """
+      label_delay_hours_capped,
+      label_delay_hours,
+      is_delayed,
+      hour_of_day, day_of_week, month_of_year, iso_week,
+      is_weekend, is_rush_hour,
+      sin_hour, cos_hour, sin_month, cos_month,
       gps_latitude, gps_longitude,
+      region4, region5,
       traffic_congestion_level, loading_unloading_time,
       handling_equipment_availability, order_fulfillment_status,
       weather_condition_severity, port_congestion_level, shipping_costs,
       lead_time_days, disruption_likelihood_score,
-      hour_of_day, day_of_week, month_of_year, iso_week,
-      is_weekend, is_rush_hour,
-      sin_hour, cos_hour, sin_month, cos_month,
       cong_x_loading, traffic_x_weather, load_x_equipment, port_x_traffic,
-      IFNULL(avg_delay_region4_hour, 0.0) AS avg_delay_region4_hour,
-      IFNULL(avg_delay_region5_hour, 0.0) AS avg_delay_region5_hour,
-      region4, region5,
+      traffic_x_disruption, leadtime_x_port, weather_x_leadtime,
       traffic_bucket, loading_time_bucket, handling_availability_bucket,
       weather_bucket, port_congestion_bucket, lead_time_bucket,
-      risk_classification
+      risk_classification,
+      avg_delay_region4_hour, avg_delay_region4_day, avg_delay_region4_week,
+      is_severe_delay
     """
     
     # ML prediction query
@@ -271,10 +337,10 @@ def predict_shipment_delay(shipment_id):
       LIMIT 1
     )
     SELECT
-      predicted_label_delay_hours AS predicted_delay_hours
+      predicted_label_delay_hours_capped AS predicted_delay_hours
     FROM ML.PREDICT(
       MODEL `{project_id}.{dataset}.{model_name}`,
-      (SELECT * FROM shipment_data)
+      (SELECT * EXCEPT(label_delay_hours_capped) FROM shipment_data)
     )
     """
     
@@ -308,11 +374,15 @@ def predict_shipment_delay(shipment_id):
             logger.error(f"Could not convert prediction to float: {e}")
             predicted_delay = 0.0
         
-        # Initialize LLM connector and generate response
+        # Use original prediction (no amplification needed with new model)
+        logger.info(f"Using original ML prediction: {predicted_delay}")
+        
+        # Initialize LLM connector and generate response with feature analysis
         llm_connector = LLMConnector()
         response = llm_connector.generate_response(
             shipment_id, 
-            {'predicted_delay_hours': predicted_delay}
+            {'predicted_delay_hours': predicted_delay},
+            shipment_features=shipment_data
         )
         
         logger.info(f"Generated response for shipment {shipment_id}")
@@ -326,15 +396,11 @@ def predict_shipment_delay(shipment_id):
 # Test function
 def test_llm_connection():
     """Test the EURI AI connection"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     try:
-        logger.info("Testing LLM connection...")
         llm_connector = LLMConnector()
         
         if not llm_connector.client:
-            logger.error("LLM client not initialized")
+            print("❌ LLM client not initialized")
             return False
         
         response = llm_connector.client.generate_completion(
@@ -342,14 +408,64 @@ def test_llm_connection():
             temperature=0.7,
             max_tokens=100
         )
-        logger.info("LLM Connection Test Successful!")
-        logger.info(f"Response: {response}")
-        print("LLM Connection Test Successful!")
+        print("✅ LLM Connection Test Successful!")
         print(f"Response: {response}")
         return True
     except Exception as e:
-        logger.error(f"LLM Connection Test Failed: {str(e)}")
-        print(f"LLM Connection Test Failed: {str(e)}")
+        print(f"❌ LLM Connection Test Failed: {str(e)}")
+        return False
+
+def test_enhanced_prediction():
+    """Test the enhanced prediction with feature analysis"""
+    try:
+        # Sample shipment data for testing
+        sample_data = {
+            'traffic_congestion_level': 0.8,
+            'weather_condition_severity': 0.6,
+            'port_congestion_level': 0.4,
+            'loading_unloading_time': 2.5,
+            'handling_equipment_availability': 0.3,
+            'is_rush_hour': 1,
+            'lead_time_days': 4
+        }
+        
+        llm_connector = LLMConnector()
+        
+        # Test 1: Delayed shipment (should show factors)
+        print("Test 1 - Delayed Shipment:")
+        response1 = llm_connector.generate_response(
+            "DELAYED123",
+            {'predicted_delay_hours': 1.5},
+            shipment_features=sample_data
+        )
+        print(response1)
+        
+        print("\n" + "-" * 40)
+        
+        # Test 2: On-time shipment (should NOT show factors)
+        print("Test 2 - On-Time Shipment:")
+        response2 = llm_connector.generate_response(
+            "ONTIME456",
+            {'predicted_delay_hours': 0.1},
+            shipment_features=sample_data
+        )
+        print(response2)
+        
+        print("\n" + "-" * 40)
+        
+        # Test 3: Early shipment (should NOT show factors)
+        print("Test 3 - Early Shipment:")
+        response3 = llm_connector.generate_response(
+            "EARLY789",
+            {'predicted_delay_hours': -0.8},
+            shipment_features=sample_data
+        )
+        print(response3)
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Enhanced Prediction Test Failed: {str(e)}")
         return False
 
 def test_euri_api_directly():
@@ -478,10 +594,15 @@ def test_ml_model_predictions():
         return False, str(e)
 
 if __name__ == "__main__":
-    # Test the connection
+    print("🧪 Testing LLM Generation...")
+    print("=" * 50)
+    
+    # Test 1: Basic LLM connection
+    print("1. Testing basic LLM connection:")
     test_llm_connection()
     
-    # Test shipment prediction
-    test_id = "68f807725b30835d5d60808"  # Replace with actual ID from your test_table
-    result = predict_shipment_delay(test_id)
-    print(f"\nTest Prediction Result: {result}")
+    print("\n" + "=" * 50)
+    
+    # Test 2: Enhanced prediction with features
+    print("2. Testing enhanced prediction with feature analysis:")
+    test_enhanced_prediction()

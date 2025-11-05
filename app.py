@@ -46,12 +46,12 @@ def load_shipment_metrics():
         query = f"""
         SELECT
             COUNT(*) as total_shipments,
-            AVG(label_delay_hours) as avg_eta_variation_hours,
+            AVG(label_delay_hours_capped) as avg_eta_variation_hours,
             AVG(lead_time_days) as avg_lead_time_days,
             AVG(disruption_likelihood_score) as avg_delay_probability,
-            STDDEV(label_delay_hours) as std_eta_variation,
-            MIN(label_delay_hours) as min_delay,
-            MAX(label_delay_hours) as max_delay,
+            STDDEV(label_delay_hours_capped) as std_eta_variation,
+            MIN(label_delay_hours_capped) as min_delay,
+            MAX(label_delay_hours_capped) as max_delay,
             -- Risk classification counts (assuming string values)
             COUNTIF(risk_classification = '1') as high_risk_count,
             COUNTIF(risk_classification = '2') as medium_risk_count,
@@ -64,7 +64,7 @@ def load_shipment_metrics():
             COUNTIF(is_weekend = 1) as weekend_shipments,
             COUNTIF(is_rush_hour = 1) as rush_hour_shipments
         FROM `{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.shipment_metrics`
-        WHERE label_delay_hours IS NOT NULL
+        WHERE label_delay_hours_capped IS NOT NULL
         """
         df = client.query(query).to_dataframe()
         return df
@@ -82,7 +82,7 @@ def load_detailed_shipments():
         timestamp,
         gps_latitude,
         gps_longitude,
-        label_delay_hours as eta_variation_hours,
+        label_delay_hours_capped as eta_variation_hours,
         lead_time_days,
         disruption_likelihood_score as delay_probability,
         risk_classification,
@@ -104,7 +104,7 @@ def load_detailed_shipments():
         region4,
         region5
     FROM `{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.shipment_metrics`
-    WHERE label_delay_hours IS NOT NULL
+    WHERE label_delay_hours_capped IS NOT NULL
     ORDER BY timestamp DESC
     LIMIT 1000
     """
@@ -132,8 +132,8 @@ def main():
                     SELECT 
                         COUNT(*) as count,
                         COUNT(DISTINCT risk_classification) as risk_levels,
-                        MIN(label_delay_hours) as min_delay,
-                        MAX(label_delay_hours) as max_delay
+                        MIN(label_delay_hours_capped) as min_delay,
+                        MAX(label_delay_hours_capped) as max_delay
                     FROM `{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.shipment_metrics`
                     """
                     result = client.query(query).to_dataframe()
@@ -316,7 +316,7 @@ def main():
                 try:
                     client = init_bigquery_client()
                     query = f"""
-                    SELECT _id, label_delay_hours
+                    SELECT _id, label_delay_hours_capped
                     FROM `{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.shipment_metrics`
                     WHERE _id IS NOT NULL
                     ORDER BY timestamp DESC
@@ -325,7 +325,7 @@ def main():
                     result = client.query(query).to_dataframe()
                     if not result.empty:
                         sample_id = result.iloc[0]['_id']
-                        actual_delay = result.iloc[0]['label_delay_hours']
+                        actual_delay = result.iloc[0]['label_delay_hours_capped']
                         
                         test_response = f"""
                         **📊 Sample Test Results:**
@@ -345,15 +345,15 @@ def main():
                             stats_query = f"""
                             SELECT 
                                 COUNT(*) as total_predictions,
-                                AVG(label_delay_hours) as avg_actual_delay,
-                                STDDEV(label_delay_hours) as std_actual_delay,
-                                MIN(label_delay_hours) as min_delay,
-                                MAX(label_delay_hours) as max_delay,
-                                COUNTIF(label_delay_hours > 0.1) as delayed_count,
-                                COUNTIF(label_delay_hours < -0.1) as early_count,
-                                COUNTIF(label_delay_hours BETWEEN -0.1 AND 0.1) as ontime_count
+                                AVG(label_delay_hours_capped) as avg_actual_delay,
+                                STDDEV(label_delay_hours_capped) as std_actual_delay,
+                                MIN(label_delay_hours_capped) as min_delay,
+                                MAX(label_delay_hours_capped) as max_delay,
+                                COUNTIF(label_delay_hours_capped > 0.1) as delayed_count,
+                                COUNTIF(label_delay_hours_capped < -0.1) as early_count,
+                                COUNTIF(label_delay_hours_capped BETWEEN -0.1 AND 0.1) as ontime_count
                             FROM `{os.getenv('BIGQUERY_PROJECT')}.{os.getenv('BIGQUERY_DATASET')}.shipment_metrics`
-                            WHERE label_delay_hours IS NOT NULL
+                            WHERE label_delay_hours_capped IS NOT NULL
                             """
                             stats_result = client.query(stats_query).to_dataframe()
                             if not stats_result.empty:

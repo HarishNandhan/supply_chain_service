@@ -1,198 +1,208 @@
 {{ config(materialized='view') }}
 
 -- ============================================================
--- Feature view for ETA delay prediction (regression target)
--- - Target: label_delay_hours (eta_variation_hours in hours)
--- - Engineered time, location, interaction, and history features
--- - BigQuery dialect
+-- Enhanced Feature View for ETA Delay Prediction
+-- Adds region × day rolling averages, capped/smoothed labels,
+-- and extra cross-feature interactions for ML training
 -- ============================================================
 
-with raw as (
-  select
+WITH raw AS (
+  SELECT
     _id,
     event_id,
 
-    -- Robust timestamp parsing (ISO or 'YYYY-MM-DD HH:MM:SS')
-    case
-      when regexp_contains(timestamp, r'T') then timestamp(timestamp)
-      else safe.parse_timestamp('%Y-%m-%d %H:%M:%S', timestamp)
-    end as ts,
+    CASE
+      WHEN REGEXP_CONTAINS(timestamp, r'T') THEN TIMESTAMP(timestamp)
+      ELSE SAFE.PARSE_TIMESTAMP('%Y-%m-%d %H:%M:%S', timestamp)
+    END AS ts,
 
-    -- === Target (no leakage fields) ===
-    safe_cast(eta_variation_hours as float64) as label_delay_hours,
+    -- Delay labels
+    SAFE_CAST(eta_variation_hours AS FLOAT64) AS label_delay_hours_raw,
 
-    -- === Core numeric signals (safe-cast to avoid failures) ===
-    safe_cast(gps_latitude  as float64) as gps_latitude,
-    safe_cast(gps_longitude as float64) as gps_longitude,
+    CASE
+      WHEN SAFE_CAST(eta_variation_hours AS FLOAT64) > 5 THEN 5
+      WHEN SAFE_CAST(eta_variation_hours AS FLOAT64) < -1 THEN -1
+      ELSE SAFE_CAST(eta_variation_hours AS FLOAT64)
+    END AS label_delay_hours_capped,
 
-    safe_cast(traffic_congestion_level         as float64) as traffic_congestion_level,
-    safe_cast(loading_unloading_time           as float64) as loading_unloading_time,
-    safe_cast(handling_equipment_availability  as float64) as handling_equipment_availability,
-    safe_cast(order_fulfillment_status         as float64) as order_fulfillment_status,
-    safe_cast(weather_condition_severity       as float64) as weather_condition_severity,
-    safe_cast(port_congestion_level            as float64) as port_congestion_level,
-    safe_cast(shipping_costs                   as float64) as shipping_costs,
-    safe_cast(lead_time_days                   as float64) as lead_time_days,
-    safe_cast(disruption_likelihood_score      as float64) as disruption_likelihood_score,
+    SAFE_CAST(ROUND(
+      CASE
+        WHEN SAFE_CAST(eta_variation_hours AS FLOAT64) > 5 THEN 5
+        WHEN SAFE_CAST(eta_variation_hours AS FLOAT64) < -1 THEN -1
+        ELSE SAFE_CAST(eta_variation_hours AS FLOAT64)
+      END, 1) AS FLOAT64) AS label_delay_hours_smoothed,
 
-    -- Categorical as-is (BQML one-hot encodes strings)
-    cast(risk_classification as string) as risk_classification
-
-    -- NOTE: Intentionally excluding:
-    --   delay_probability, delivery_time_deviation  (likely leakage)
-  from {{ ref('stg_shipments') }}
-  where eta_variation_hours is not null
+    SAFE_CAST(gps_latitude AS FLOAT64)  AS gps_latitude,
+    SAFE_CAST(gps_longitude AS FLOAT64) AS gps_longitude,
+    SAFE_CAST(traffic_congestion_level AS FLOAT64) AS traffic_congestion_level,
+    SAFE_CAST(loading_unloading_time AS FLOAT64) AS loading_unloading_time,
+    SAFE_CAST(handling_equipment_availability AS FLOAT64) AS handling_equipment_availability,
+    SAFE_CAST(order_fulfillment_status AS FLOAT64) AS order_fulfillment_status,
+    SAFE_CAST(weather_condition_severity AS FLOAT64) AS weather_condition_severity,
+    SAFE_CAST(port_congestion_level AS FLOAT64) AS port_congestion_level,
+    SAFE_CAST(shipping_costs AS FLOAT64) AS shipping_costs,
+    SAFE_CAST(lead_time_days AS FLOAT64) AS lead_time_days,
+    SAFE_CAST(disruption_likelihood_score AS FLOAT64) AS disruption_likelihood_score,
+    CAST(risk_classification AS STRING) AS risk_classification
+  FROM {{ ref('stg_shipments') }}
+  WHERE eta_variation_hours IS NOT NULL
 ),
 
--- Location enrichment: GeoHash zones from lat/lon
-geo as (
-  select
+geo AS (
+  SELECT
     r.*,
-    case
-      when gps_latitude is null or gps_longitude is null then null
-      else st_geohash(st_geogpoint(gps_longitude, gps_latitude), 4)  -- ~20km cells
-    end as region4,
-    case
-      when gps_latitude is null or gps_longitude is null then null
-      else st_geohash(st_geogpoint(gps_longitude, gps_latitude), 5)  -- ~5km cells
-    end as region5
-  from raw r
+    CASE
+      WHEN gps_latitude IS NULL OR gps_longitude IS NULL THEN NULL
+      ELSE ST_GeoHash(ST_GeogPoint(gps_longitude, gps_latitude), 4)
+    END AS region4,
+    CASE
+      WHEN gps_latitude IS NULL OR gps_longitude IS NULL THEN NULL
+      ELSE ST_GeoHash(ST_GeogPoint(gps_longitude, gps_latitude), 5)
+    END AS region5
+  FROM raw r
 ),
 
--- Base engineered features (time, cyclic, interactions, buckets)
-fe as (
-  select
+fe AS (
+  SELECT
     g.*,
+    EXTRACT(HOUR FROM ts) AS hour_of_day,
+    EXTRACT(DAYOFWEEK FROM ts) AS day_of_week,
+    EXTRACT(MONTH FROM ts) AS month_of_year,
+    EXTRACT(ISOWEEK FROM ts) AS iso_week,
 
-    -- ==== Time-derived features ====
-    extract(hour      from ts) as hour_of_day,
-    extract(dayofweek from ts) as day_of_week,       -- 1=Sun … 7=Sat
-    extract(month     from ts) as month_of_year,
-    extract(isoweek   from ts) as iso_week,
+    CASE WHEN EXTRACT(DAYOFWEEK FROM ts) IN (1,7) THEN 1 ELSE 0 END AS is_weekend,
+    CASE WHEN EXTRACT(HOUR FROM ts) BETWEEN 7 AND 10
+           OR EXTRACT(HOUR FROM ts) BETWEEN 16 AND 19 THEN 1 ELSE 0 END AS is_rush_hour,
 
-    -- Human-friendly flags
-    case when extract(dayofweek from ts) in (1,7) then 1 else 0 end as is_weekend,
-    case when extract(hour from ts) between 7 and 10
-           or  extract(hour from ts) between 16 and 19 then 1 else 0 end as is_rush_hour,
+    SIN(2 * 3.141592653589793 * EXTRACT(HOUR FROM ts) / 24.0)  AS sin_hour,
+    COS(2 * 3.141592653589793 * EXTRACT(HOUR FROM ts) / 24.0)  AS cos_hour,
+    SIN(2 * 3.141592653589793 * EXTRACT(MONTH FROM ts) / 12.0) AS sin_month,
+    COS(2 * 3.141592653589793 * EXTRACT(MONTH FROM ts) / 12.0) AS cos_month,
 
-    -- Cyclic encodings (help tree & linear models)
-    -- hour: 24h cycle
-    -- BigQuery: no pi(); use constant
-    sin(2 * 3.141592653589793 * extract(hour from ts) / 24.0)  as sin_hour,
-    cos(2 * 3.141592653589793 * extract(hour from ts) / 24.0)  as cos_hour,
-    sin(2 * 3.141592653589793 * extract(month from ts) / 12.0) as sin_month,
-    cos(2 * 3.141592653589793 * extract(month from ts) / 12.0) as cos_month,
+    -- Interaction features
+    traffic_congestion_level * loading_unloading_time AS cong_x_loading,
+    traffic_congestion_level * weather_condition_severity AS traffic_x_weather,
+    loading_unloading_time * handling_equipment_availability AS load_x_equipment,
+    port_congestion_level * traffic_congestion_level AS port_x_traffic,
 
-    -- ==== Interactions (nonlinear drivers) ====
-    traffic_congestion_level * loading_unloading_time            as cong_x_loading,
-    traffic_congestion_level * weather_condition_severity        as traffic_x_weather,
-    loading_unloading_time * handling_equipment_availability     as load_x_equipment,
-    port_congestion_level  * traffic_congestion_level            as port_x_traffic,
+    -- New engineered features
+    traffic_congestion_level * disruption_likelihood_score AS traffic_x_disruption,
+    lead_time_days * port_congestion_level AS leadtime_x_port,
+    weather_condition_severity * lead_time_days AS weather_x_leadtime,
 
-    -- ==== Business buckets (categorical, interpretable) ====
-    case
-      when traffic_congestion_level is null then 'unknown'
-      when traffic_congestion_level < 0.3 then 'low'
-      when traffic_congestion_level < 0.7 then 'medium'
-      else 'high'
-    end as traffic_bucket,
+    -- Route distance proxy
+    ST_DISTANCE(ST_GeogPoint(gps_longitude, gps_latitude),
+                ST_GeogPoint(gps_longitude + 0.01, gps_latitude + 0.01)) / 1000 AS approx_distance_km,
 
-    case
-      when loading_unloading_time is null then 'unknown'
-      when loading_unloading_time < 1.0 then 'short'
-      when loading_unloading_time <= 2.0 then 'normal'
-      else 'long'
-    end as loading_time_bucket,
+    -- Categorical buckets
+    CASE WHEN traffic_congestion_level < 0.3 THEN 'low'
+         WHEN traffic_congestion_level < 0.7 THEN 'medium'
+         ELSE 'high' END AS traffic_bucket,
 
-    case
-      when handling_equipment_availability is null then 'unknown'
-      when handling_equipment_availability < 0.4 then 'poor'
-      when handling_equipment_availability < 0.7 then 'ok'
-      else 'good'
-    end as handling_availability_bucket,
+    CASE WHEN loading_unloading_time < 1.0 THEN 'short'
+         WHEN loading_unloading_time <= 2.0 THEN 'normal'
+         ELSE 'long' END AS loading_time_bucket,
 
-    case
-      when weather_condition_severity is null then 'unknown'
-      when weather_condition_severity = 0 then 'clear'
-      when weather_condition_severity < 0.3 then 'mild'
-      else 'severe'
-    end as weather_bucket,
+    CASE WHEN handling_equipment_availability < 0.4 THEN 'poor'
+         WHEN handling_equipment_availability < 0.7 THEN 'ok'
+         ELSE 'good' END AS handling_availability_bucket,
 
-    case
-      when port_congestion_level is null then 'unknown'
-      when port_congestion_level < 0.3 then 'low'
-      when port_congestion_level < 0.7 then 'medium'
-      else 'high'
-    end as port_congestion_bucket,
+    CASE WHEN weather_condition_severity = 0 THEN 'clear'
+         WHEN weather_condition_severity < 0.3 THEN 'mild'
+         ELSE 'severe' END AS weather_bucket,
 
-    case
-      when lead_time_days is null then 'unknown'
-      when lead_time_days = 0 then 'same_day'
-      when lead_time_days <= 2 then 'short'
-      else 'long'
-    end as lead_time_bucket
+    CASE WHEN port_congestion_level < 0.3 THEN 'low'
+         WHEN port_congestion_level < 0.7 THEN 'medium'
+         ELSE 'high' END AS port_congestion_bucket,
 
-  from geo g
+    CASE WHEN lead_time_days = 0 THEN 'same_day'
+         WHEN lead_time_days <= 2 THEN 'short'
+         ELSE 'long' END AS lead_time_bucket
+  FROM geo g
 ),
 
--- History-based signal: rolling average delay by region × hour (exclude current row to avoid leakage)
-hist as (
-  select
+hist AS (
+  SELECT
     fe.*,
-    -- Uses ROWS frame to exclude current row (… AND 1 PRECEDING)
-    avg(label_delay_hours) over (
-      partition by region4, hour_of_day
-      order by ts
-      rows between unbounded preceding and 1 preceding
-    ) as avg_delay_region4_hour,
+    AVG(label_delay_hours_smoothed) OVER (
+  PARTITION BY region4, hour_of_day
+  ORDER BY ts
+  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+) AS avg_delay_region4_hour,
 
-    avg(label_delay_hours) over (
-      partition by region5, hour_of_day
-      order by ts
-      rows between unbounded preceding and 1 preceding
-    ) as avg_delay_region5_hour
-  from fe
+AVG(label_delay_hours_smoothed) OVER (
+  PARTITION BY region4, day_of_week
+  ORDER BY ts
+  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+) AS avg_delay_region4_day,
+
+-- 7-day moving average delay for region (captures weekly congestion trends)
+AVG(label_delay_hours_smoothed) OVER (
+  PARTITION BY region4
+  ORDER BY ts
+  ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING
+) AS avg_delay_region4_week,
+
+
+-- Binary indicator for severe delays (> 2 hours late)
+CASE
+  WHEN label_delay_hours_capped > 2 THEN 1
+  ELSE 0
+END AS is_severe_delay
+
+  FROM fe
 )
 
--- Final projection: target + all features we want available to BQML
-select
+SELECT
   _id,
   event_id,
-  ts as timestamp,
-
-  -- === TARGET ===
-  label_delay_hours,
-
-  -- === Time features ===
-  hour_of_day, day_of_week, month_of_year, iso_week,
-  is_weekend, is_rush_hour,
-  sin_hour, cos_hour, sin_month, cos_month,
-
-  -- === Location features ===
-  gps_latitude, gps_longitude,
-  region4, region5,
-
-  -- === Core numeric ===
-  traffic_congestion_level,
-  loading_unloading_time,
-  handling_equipment_availability,
-  order_fulfillment_status,
-  weather_condition_severity,
-  port_congestion_level,
-  shipping_costs,
-  lead_time_days,
-  disruption_likelihood_score,
-
-  -- === Interactions ===
-  cong_x_loading, traffic_x_weather, load_x_equipment, port_x_traffic,
-
-  -- === Buckets (categorical, BQML one-hot encodes strings) ===
-  traffic_bucket, loading_time_bucket, handling_availability_bucket,
-  weather_bucket, port_congestion_bucket, lead_time_bucket,
-  risk_classification,
-
-  -- === History (strong signal; may be null for earliest rows) ===
-  avg_delay_region4_hour,
-  avg_delay_region5_hour
-
-from hist
+  ts AS timestamp,
+  COALESCE(label_delay_hours_raw, 0) AS label_delay_hours_raw,
+  COALESCE(label_delay_hours_capped, 0) AS label_delay_hours_capped,
+  COALESCE(label_delay_hours_smoothed, 0) AS label_delay_hours,
+  CASE
+    WHEN label_delay_hours_smoothed > 1 THEN 1
+    ELSE 0
+  END AS is_delayed,
+  COALESCE(hour_of_day, 0) AS hour_of_day,
+  COALESCE(day_of_week, 0) AS day_of_week,
+  COALESCE(month_of_year, 0) AS month_of_year,
+  COALESCE(iso_week, 0) AS iso_week,
+  COALESCE(is_weekend, 0) AS is_weekend,
+  COALESCE(is_rush_hour, 0) AS is_rush_hour,
+  COALESCE(sin_hour, 0) AS sin_hour,
+  COALESCE(cos_hour, 0) AS cos_hour,
+  COALESCE(sin_month, 0) AS sin_month,
+  COALESCE(cos_month, 0) AS cos_month,
+  COALESCE(gps_latitude, 0) AS gps_latitude,
+  COALESCE(gps_longitude, 0) AS gps_longitude,
+  COALESCE(region4, 'unknown') AS region4,
+  COALESCE(region5, 'unknown') AS region5,
+  COALESCE(traffic_congestion_level, 0) AS traffic_congestion_level,
+  COALESCE(loading_unloading_time, 0) AS loading_unloading_time,
+  COALESCE(handling_equipment_availability, 1) AS handling_equipment_availability,
+  COALESCE(order_fulfillment_status, 0) AS order_fulfillment_status,
+  COALESCE(weather_condition_severity, 0) AS weather_condition_severity,
+  COALESCE(port_congestion_level, 0) AS port_congestion_level,
+  COALESCE(shipping_costs, 0) AS shipping_costs,
+  COALESCE(lead_time_days, 0) AS lead_time_days,
+  COALESCE(disruption_likelihood_score, 0) AS disruption_likelihood_score,
+  COALESCE(cong_x_loading, 0) AS cong_x_loading,
+  COALESCE(traffic_x_weather, 0) AS traffic_x_weather,
+  COALESCE(load_x_equipment, 0) AS load_x_equipment,
+  COALESCE(port_x_traffic, 0) AS port_x_traffic,
+  COALESCE(traffic_x_disruption, 0) AS traffic_x_disruption,
+  COALESCE(leadtime_x_port, 0) AS leadtime_x_port,
+  COALESCE(weather_x_leadtime, 0) AS weather_x_leadtime,
+  COALESCE(traffic_bucket, 'unknown') AS traffic_bucket,
+  COALESCE(loading_time_bucket, 'unknown') AS loading_time_bucket,
+  COALESCE(handling_availability_bucket, 'unknown') AS handling_availability_bucket,
+  COALESCE(weather_bucket, 'unknown') AS weather_bucket,
+  COALESCE(port_congestion_bucket, 'unknown') AS port_congestion_bucket,
+  COALESCE(lead_time_bucket, 'unknown') AS lead_time_bucket,
+  COALESCE(risk_classification, 'unknown') AS risk_classification,
+  COALESCE(avg_delay_region4_hour, 0) AS avg_delay_region4_hour,
+COALESCE(avg_delay_region4_day, 0)  AS avg_delay_region4_day,
+COALESCE(avg_delay_region4_week, 0) AS avg_delay_region4_week,
+COALESCE(is_severe_delay, 0) AS is_severe_delay
+FROM hist
