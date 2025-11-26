@@ -53,18 +53,18 @@ This platform solves the critical problem of **supply chain visibility and deliv
 ### The Problem We Solve
 
 Supply chain managers struggle with:
-- ❌ Lack of real-time visibility into shipment status
-- ❌ Inability to predict delays before they happen
-- ❌ Manual data processing and reporting
-- ❌ Poor communication with clients about delivery status
+- Lack of real-time visibility into shipment status
+- Inability to predict delays before they happen
+- Manual data processing and reporting
+- Poor communication with clients about delivery status
 
 ### Our Solution
 
-✅ **Automated data pipeline** that processes shipments in real-time  
-✅ **ML predictions** that forecast delays with 85%+ accuracy  
-✅ **Self-service portal** for clients to check order status  
-✅ **AI-powered responses** that explain delays in natural language  
-✅ **Admin analytics** for operational insights  
+**Automated data pipeline** that processes shipments in real-time  
+**ML predictions** that forecast delays with 85%+ accuracy  
+**Self-service portal** for clients to check order status  
+**AI-powered responses** that explain delays in natural language  
+**Admin analytics** for operational insights  
 
 ---
 
@@ -179,11 +179,11 @@ Supply chain managers struggle with:
 Before you begin, ensure you have:
 
 ### Required Accounts
-- ✅ Google Cloud Platform account (with BigQuery enabled)
-- ✅ Confluent Cloud account (Kafka)
-- ✅ MongoDB Atlas account
-- ✅ Euri AI API key
-- ✅ Google Sheets with service account access
+- Google Cloud Platform account (with BigQuery enabled)
+- Confluent Cloud account (Kafka)
+- MongoDB Atlas account
+- Euri AI API key
+- Google Sheets with service account access
 
 ### Required Software
 - Python 3.11 or higher
@@ -204,9 +204,9 @@ Before you begin, ensure you have:
 
 This repository uses **template files** for sensitive configuration. You'll need to:
 
-1. ✅ Copy `.example` files to create your own configuration files
-2. ✅ Fill in your actual credentials (API keys, passwords, etc.)
-3. ✅ Download your Google Cloud service account JSON key
+1. Copy `.example` files to create your own configuration files
+2. Fill in your actual credentials (API keys, passwords, etc.)
+3. Download your Google Cloud service account JSON key
 
 **Template files included:**
 - `configs/.env.example` → Copy to `configs/.env`
@@ -398,7 +398,7 @@ cat configs/google-credentials.json | python -m json.tool
 
 ## ⚙️ Configuration
 
-### 🔑 Important: Environment Setup
+### Important: Environment Setup
 
 **Before running the application, you MUST set up your environment files with credentials.**
 
@@ -596,7 +596,7 @@ CREATE SCHEMA `your-project.supply_chain`;
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ### Running the Complete Pipeline
 
@@ -967,11 +967,11 @@ python test_connection.py
 ```
 
 This will test:
-- ✅ Python package imports
-- ✅ Environment variables
-- ✅ MongoDB connection
-- ✅ Kafka connection
-- ✅ Data file accessibility
+- Python package imports
+- Environment variables
+- MongoDB connection
+- Kafka connection
+- Data file accessibility
 
 ### Test Individual Components
 
@@ -1011,16 +1011,16 @@ python kafka_consumer.py
 
 ---
 
-## 🔒 Security
+## Security
 
 ### Best Practices Implemented
 
-- ✅ Password hashing (SHA-256)
-- ✅ Environment variables for secrets
-- ✅ Service account authentication
-- ✅ SASL_SSL for Kafka
-- ✅ MongoDB authentication
-- ✅ API key authentication for Euri AI
+- Password hashing (SHA-256)
+- Environment variables for secrets
+- Service account authentication
+- SASL_SSL for Kafka
+- MongoDB authentication
+- API key authentication for Euri AI
 
 ### Additional Recommendations
 
@@ -1075,7 +1075,7 @@ gcloud composer environments storage dags import \
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please follow these steps:
 
