@@ -1,0 +1,14 @@
+#testing _id unique, event_id not null
+version: 2
+
+models:
+  - name: stg_shipments
+    description: "Staging table for shipments_raw"
+    columns:
+      - name: _id
+        tests:
+          - not_null
+          - unique
+      - name: event_id
+        tests:
+          - not_null

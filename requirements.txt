@@ -8,9 +8,12 @@ fastapi
 uvicorn
 pydantic
 httpx
+requests
 streamlit
 plotly
 matplotlib
 seaborn
 google-cloud-bigquery
+db-dtypes
+pyarrow
 euriai

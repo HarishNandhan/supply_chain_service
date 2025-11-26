@@ -1,0 +1,17 @@
+{
+  "google_sheet_id": "your_google_sheet_id_here",
+  "kafka_bootstrap_servers": "pkc-xxxxx.region.aws.confluent.cloud:9092",
+  "kafka_api_key": "your_kafka_api_key",
+  "kafka_api_secret": "your_kafka_api_secret",
+  "kafka_topic": "supply_chain",
+  "mongodb_uri": "mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority&appName=cluster-name",
+  "mongodb_database": "supply_chain_analytics",
+  "mongodb_collection": "scheduler_table",
+  "bigquery_project": "your-gcp-project-id",
+  "bigquery_dataset": "supply_chain",
+  "bigquery_table": "shipments_raw",
+  "bq_model": "delay_regressor_v6",
+  "bq_test_tbl": "test_table",
+  "ml_model_name": "delay_regressor_v6",
+  "last_processed_row_index": "0"
+}

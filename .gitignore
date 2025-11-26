@@ -1,32 +1,74 @@
-# Docker files
-Dockerfile*
-docker-compose.yml
-docker-compose.yaml
+# ============================================
+# SENSITIVE FILES - NEVER COMMIT THESE!
+# ============================================
 
-# Deployment scripts
-deploy.sh
-deployment.sh
-
-# JSON configuration files
-*.json
-!package.json
-!tsconfig.json
-
-# Kubernetes manifests
-k8s-manifests.yaml
-k8s-*.yaml
-kubernetes/
-
-# Environment files
+# Environment files with credentials
 .env
 .env.local
 .env.production
 .env.staging
+configs/.env
+supply-chain-airflow/.env
+
+# Google Cloud credentials
+configs/google-credentials.json
+supply-chain-airflow/configs/google-credentials.json
+*-credentials.json
+credentials.json
+service-account.json
+*-key.json
+secrets/
+
+# Airflow variables (contains API keys and passwords)
+airflow_variables.json
+
+# User database (contains hashed passwords)
+data/users.json
+
+# ============================================
+# BUILD & DEPLOYMENT FILES
+# ============================================
+
+# Docker files
+Dockerfile*
+docker-compose.yml
+docker-compose.yaml
+docker-compose.override.yml
+supply-chain-airflow/docker-compose.override.yml
+
+# Deployment scripts and configs
+deploy.sh
+deployment.sh
+deployment/*.sh
+deployment/deployment-info.txt
+deployment/streamlit-url.txt
+deployment/deployment.log
+deployment/config.sh
+
+# Kubernetes manifests (may contain secrets)
+k8s-manifests.yaml
+k8s-*.yaml
+kubernetes/*.yaml
+
+# Compressed archives
+*.tar.gz
+*.zip
+airflow-project.tar.gz
+
+# ============================================
+# LOGS & TEMPORARY FILES
+# ============================================
 
 # Logs
 *.log
 logs/
 dashboard.log
+deployment/*.log
+supply-chain-airflow/logs/
+
+# ============================================
+# PYTHON
+# ============================================
 
 # Python cache
 __pycache__/
@@ -49,47 +91,106 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+ml_model_prediction/__pycache__/
 
 # Virtual environments
 venv/
 env/
 ENV/
 .venv/
+.virtualenv/
 
-# IDE files
+# ============================================
+# IDE & EDITOR FILES
+# ============================================
+
+# VSCode
 .vscode/
+.vscode/settings.json
+
+# PyCharm
 .idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
 *.swp
 *.swo
 *~
 
-# OS files
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ============================================
+# OS FILES
+# ============================================
+
+# macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
+
+# Windows
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Temporary files
+# Linux
+*~
+
+# ============================================
+# TEMPORARY FILES
+# ============================================
+
 *.tmp
 *.temp
 temp/
 tmp/
 
-# Credentials and secrets
-credentials.json
-service-account.json
-*-key.json
-secrets/
+# ============================================
+# DBT ARTIFACTS
+# ============================================
 
-# Data files (optional - uncomment if you don't want to track data)
-# data/
-# *.csv
-# *.parquet
-
-# dbt artifacts
 supply_chain_dbt/target/
 supply_chain_dbt/dbt_packages/
 supply_chain_dbt/logs/
+supply_chain_dbt/.dbt/
+
+# ============================================
+# AIRFLOW
+# ============================================
+
+supply-chain-airflow/logs/
+supply-chain-airflow/.astro/
+
+# ============================================
+# DATA FILES (OPTIONAL)
+# ============================================
+
+# Uncomment if you don't want to track large data files
+# data/*.csv
+# data/*.parquet
+# data/*.json
+
+# Keep sample data but ignore large files
+data/cleaned_supply_chain_data.csv
+
+# ============================================
+# DOCUMENTATION (OPTIONAL)
+# ============================================
+
+# Uncomment if you want to keep only essential docs
+# CONTINUE_DEPLOYMENT.md
+# DEPLOYMENT_GUIDE.md
+# DEPLOYMENT_READINESS_REPORT.md
+# DEPLOYMENT_STATUS.md
+# DEPLOYMENT_TUTORIAL.md
+# DEPLOYMENT_VISUAL_FLOW.md
+# FINAL_DEPLOYMENT_SUMMARY.md
+# QUICK_DEPLOY.md
