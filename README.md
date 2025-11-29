@@ -5,7 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Apache Airflow](https://img.shields.io/badge/Airflow-2.7+-green.svg)](https://airflow.apache.org/)
 [![BigQuery ML](https://img.shields.io/badge/BigQuery-ML-orange.svg)](https://cloud.google.com/bigquery-ml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 A complete end-to-end data pipeline that extracts shipment data from Google Sheets, processes it through Kafka and MongoDB, transforms it with dbt, stores it in BigQuery, and provides ML-powered delivery predictions through an interactive Streamlit dashboard.
 
