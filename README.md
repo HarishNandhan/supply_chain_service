@@ -1,6 +1,7 @@
 # 🚀 Supply Chain Analytics As A Service Platform
 
 > **Real-time supply chain monitoring and ML-powered delivery prediction system**
+> **Project Team Group: Supply_chain_as_a_service**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Apache Airflow](https://img.shields.io/badge/Airflow-2.7+-green.svg)](https://airflow.apache.org/)
@@ -15,13 +16,12 @@ A complete end-to-end data pipeline that extracts shipment data from Google Shee
 
 ## 🎬 Demo
 
-**Live Demo:** [Coming Soon]  
-**Video Walkthrough:** [Coming Soon]  
+**Live Demo and Walkthrough:** https://youtu.be/QvIhfgtEL-I?si=GHoBTmojJVC0hZR5
 **Documentation:** [Full Docs](README.md) | [Quick Start](QUICKSTART.md) | [Architecture](ARCHITECTURE.md)
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Architecture](#architecture)
@@ -35,11 +35,10 @@ A complete end-to-end data pipeline that extracts shipment data from Google Shee
 - [Data Flow](#data-flow)
 - [API Documentation](#api-documentation)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
 
 ---
 
-## 🎯 Overview
+##  Overview
 
 This platform solves the critical problem of **supply chain visibility and delivery prediction**. It provides:
 
@@ -68,7 +67,7 @@ Supply chain managers struggle with:
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────┐
@@ -120,9 +119,9 @@ Supply chain managers struggle with:
 
 ---
 
-## ✨ Features
+##  Features
 
-### 🔐 Dual Portal System
+###  Dual Portal System
 
 **Admin Portal:**
 - 📊 Real-time shipment monitoring dashboard
@@ -132,12 +131,12 @@ Supply chain managers struggle with:
 - 🎯 KPI tracking (delayed, on-time, early)
 
 **Client Portal:**
-- 📦 Natural language order tracking
-- 🤖 AI-powered delivery status explanations
-- ⏱️ Predicted delay/early arrival times
-- 📊 Order details and metrics
+-  Natural language order tracking
+-  AI-powered delivery status explanations
+-  Predicted delay/early arrival times
+-  Order details and metrics
 
-### 🤖 ML-Powered Predictions
+### ML-Powered Predictions
 
 - **Model:** BigQuery ML Linear Regressor
 - **Features:** 40+ engineered features including:
@@ -148,7 +147,7 @@ Supply chain managers struggle with:
   - Interaction features (traffic × weather, port × traffic, etc.)
   - Categorical buckets for interpretability
 
-### 🔄 Automated Pipeline
+###  Automated Pipeline
 
 - **Incremental processing:** One row at a time from Google Sheets
 - **Status tracking:** MongoDB tracks processing stages
@@ -174,7 +173,7 @@ Supply chain managers struggle with:
 
 ---
 
-## 📦 Prerequisites
+## Prerequisites
 
 Before you begin, ensure you have:
 
@@ -392,7 +391,6 @@ cat configs/google-credentials.json | python -m json.tool
 - They are already in `.gitignore` and won't be committed
 - Never share these files publicly
 - Rotate credentials regularly
-- See [SECURITY.md](SECURITY.md) for best practices
 
 ---
 
@@ -472,11 +470,10 @@ This file contains all Airflow variables. Update all placeholder values with you
    supply-chain-airflow/configs/google-credentials.json
    ```
 
-**⚠️ IMPORTANT:** 
+** IMPORTANT:** 
 - Never commit these files to Git (they're already in `.gitignore`)
 - Keep your credentials secure
 - Rotate credentials regularly
-- See [SECURITY.md](SECURITY.md) for best practices
 
 ---
 
@@ -653,7 +650,7 @@ streamlit run app.py
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 supply-chain-analytics/
@@ -694,7 +691,7 @@ supply-chain-analytics/
 
 ---
 
-## 🔄 Data Flow
+##  Data Flow
 
 ### Pipeline Stages
 
@@ -764,7 +761,7 @@ supply-chain-analytics/
 
 ---
 
-## 🔌 API Documentation
+##  API Documentation
 
 ### Kafka Producer API
 
@@ -806,7 +803,7 @@ GET http://localhost:8003/events?limit=10
 
 ---
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Configuration Issues
 
@@ -958,7 +955,7 @@ streamlit run app.py --logger.level=debug
 
 ---
 
-## 🧪 Testing
+##  Testing
 
 ### Test Connections
 
@@ -992,7 +989,7 @@ python kafka_consumer.py
 
 ---
 
-## 📊 Performance
+## Performance
 
 ### Pipeline Metrics
 
@@ -1032,7 +1029,7 @@ python kafka_consumer.py
 
 ---
 
-## 🚀 Deployment
+##  Deployment
 
 ### Deploy to Google Cloud
 
@@ -1085,15 +1082,7 @@ We welcome contributions! Please follow these steps:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-### Development Guidelines
-
-- Follow PEP 8 style guide
-- Add docstrings to all functions
-- Write unit tests for new features
-- Update documentation
-
-
-## 🙏 Acknowledgment
+## Acknowledgment
 
 - Confluent for Kafka Cloud
 - Google Cloud for BigQuery ML
