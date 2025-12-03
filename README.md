@@ -1,7 +1,7 @@
 # 🚀 Supply Chain Analytics As A Service Platform
+## **Project Team Group: Supply_chain_as_a_service**
 
 > **Real-time supply chain monitoring and ML-powered delivery prediction system**
-> **Project Team Group: Supply_chain_as_a_service**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Apache Airflow](https://img.shields.io/badge/Airflow-2.7+-green.svg)](https://airflow.apache.org/)
