@@ -16,7 +16,8 @@ A complete end-to-end data pipeline that extracts shipment data from Google Shee
 
 ## 🎬 Demo
 
-**Live Demo and Walkthrough:** https://youtu.be/QvIhfgtEL-I?si=GHoBTmojJVC0hZR5
+**Live Demo and Walkthrough:** [Youtube Video](https://youtu.be/QvIhfgtEL-I?si=GHoBTmojJVC0hZR5)
+**Project Report:** [Doc Report](https://docs.google.com/document/d/1H7tL823vl_3GUHpffd3HPiMPVnYD-Evkll2ycL3PfuQ/edit?usp=sharing)
 **Documentation:** [Full Docs](README.md) | [Quick Start](QUICKSTART.md) | [Architecture](ARCHITECTURE.md)
 
 ---
