@@ -10,7 +10,7 @@
 
 A complete end-to-end data pipeline that extracts shipment data from Google Sheets, processes it through Kafka and MongoDB, transforms it with dbt, stores it in BigQuery, and provides ML-powered delivery predictions through an interactive Streamlit dashboard.
 
-![Dashboard Preview](docs/images/dashboard-preview.png)
+![Dashboard Preview](https://github.com/HarishNandhan/supply_chain_service/blob/main/assets/images/admin%20dashboard.png)
 
 ---
 
